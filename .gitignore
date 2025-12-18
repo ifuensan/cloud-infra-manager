@@ -1,0 +1,60 @@
+# Archivos de configuración con credenciales
+*-config.env
+*.env
+.env
+.env.*
+
+# Archivos de infraestructura con información sensible
+*-infrastructure.txt
+infrastructure.txt
+
+# Claves SSH privadas
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Backups de configuración
+*.bak
+*.backup
+*~
+
+# Archivos de log
+*.log
+
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Terraform (si se añade en el futuro)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Python (si se añaden scripts Python)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Node.js (si se añaden scripts Node)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos de caché
+.cache/
+*.cache
