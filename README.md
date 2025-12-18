@@ -1,51 +1,51 @@
 # Cloud Infrastructure Manager
 
-Conjunto de scripts para gestionar infraestructura en múltiples proveedores cloud de forma sencilla y eficiente.
+Collection of scripts to manage infrastructure across multiple cloud providers in a simple and efficient way.
 
-## Descripción
+## Description
 
-Este proyecto proporciona herramientas de línea de comandos para crear, gestionar y destruir infraestructura cloud. Actualmente soporta AWS, con planes de expandirse a otros proveedores en el futuro.
+This project provides command-line tools to create, manage, and destroy cloud infrastructure. Currently supports AWS, with plans to expand to other providers in the future.
 
-## Caso de Uso Actual
+## Current Use Case
 
-Estos scripts fueron creados inicialmente para gestionar la infraestructura de [peer-observer](https://github.com/0xB10C/peer-observer), un proyecto de observación y monitoreo de la red Bitcoin.
+These scripts were initially created to manage the infrastructure for [peer-observer](https://github.com/0xB10C/peer-observer), a Bitcoin network observation and monitoring project.
 
-## Proveedores Soportados
+## Supported Providers
 
 ### ✅ AWS (Amazon Web Services)
 
-Scripts completos para gestionar instancias EC2 con configuración específica para peer-observer.
+Complete scripts to manage EC2 instances with specific configuration for peer-observer.
 
-**Características:**
-- Creación automatizada de infraestructura EC2
-- Gestión de instancias (start/stop/status)
-- Destrucción completa con limpieza de recursos
-- Configuración de Security Groups
-- Gestión de Elastic IPs
-- Volúmenes EBS con protección contra eliminación
-- Gestión de SSH key pairs
+**Features:**
+- Automated EC2 infrastructure creation
+- Instance management (start/stop/status)
+- Complete destruction with resource cleanup
+- Security Group configuration
+- Elastic IP management
+- EBS volumes with deletion protection
+- SSH key pair management
 
-### 🔜 Próximos Proveedores
+### 🔜 Upcoming Providers
 
-Ver [TODO.md](TODO.md) para la lista completa de proveedores planeados.
+See [TODO.md](TODO.md) for the complete list of planned providers.
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 cloud-infra-manager/
-├── README.md                    # Este archivo
-├── TODO.md                      # Roadmap y tareas pendientes
+├── README.md                    # This file
+├── TODO.md                      # Roadmap and pending tasks
 ├── aws/
-│   ├── create-aws-infra.sh      # Script de creación de infraestructura
-│   └── manage-aws-instances.sh  # Script de gestión de instancias
-└── (futuros proveedores aquí)
+│   ├── create-aws-infra.sh      # Infrastructure creation script
+│   └── manage-aws-instances.sh  # Instance management script
+└── (future providers here)
 ```
 
-## AWS - Guía de Uso
+## AWS - Usage Guide
 
-### Requisitos Previos
+### Prerequisites
 
-1. **AWS CLI instalado**
+1. **AWS CLI installed**
    ```bash
    # macOS
    brew install awscli
@@ -56,135 +56,135 @@ cloud-infra-manager/
    sudo ./aws/install
    ```
 
-2. **Credenciales AWS configuradas**
+2. **AWS credentials configured**
    ```bash
    aws configure
    ```
 
-### Crear Infraestructura
+### Create Infrastructure
 
-El script `create-aws-infra.sh` crea toda la infraestructura necesaria:
+The `create-aws-infra.sh` script creates all necessary infrastructure:
 
 ```bash
 cd aws
 ./create-aws-infra.sh
 ```
 
-**Lo que crea:**
-- 2 instancias EC2 (node01 para Bitcoin, web01 para dashboard)
-- Security Groups con reglas configuradas
-- Elastic IPs persistentes
-- Volúmenes EBS (1000 GB para blockchain, con DeleteOnTermination: false)
+**What it creates:**
+- 2 EC2 instances (node01 for Bitcoin, web01 for dashboard)
+- Security Groups with configured rules
+- Persistent Elastic IPs
+- EBS volumes (1000 GB for blockchain, with DeleteOnTermination: false)
 - SSH Key Pair
 
-**Salida:**
-- `aws-config.env` - Variables de configuración (NO commitear)
-- `aws-infrastructure.txt` - Documentación de la infraestructura
+**Output:**
+- `aws-config.env` - Configuration variables (DO NOT commit)
+- `aws-infrastructure.txt` - Infrastructure documentation
 
-### Gestionar Instancias
+### Manage Instances
 
-Una vez creada la infraestructura, usa `manage-aws-instances.sh`:
+Once the infrastructure is created, use `manage-aws-instances.sh`:
 
 ```bash
 cd aws
-./manage-aws-instances.sh [comando]
+./manage-aws-instances.sh [command]
 ```
 
-**Comandos disponibles:**
+**Available commands:**
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| `start` | Inicia las instancias EC2 (stopped → running) |
-| `stop` | Detiene las instancias EC2 (running → stopped) |
-| `status` | Muestra el estado actual de las instancias |
-| `destroy` | Destruye permanentemente toda la infraestructura |
-| `help` | Muestra ayuda |
+| `start` | Starts EC2 instances (stopped → running) |
+| `stop` | Stops EC2 instances (running → stopped) |
+| `status` | Shows current instance status |
+| `destroy` | Permanently destroys all infrastructure |
+| `help` | Shows help |
 
-**Ejemplos:**
+**Examples:**
 
 ```bash
-# Ver estado de las instancias
+# View instance status
 ./manage-aws-instances.sh status
 
-# Iniciar instancias
+# Start instances
 ./manage-aws-instances.sh start
 
-# Detener instancias (para ahorrar costos)
+# Stop instances (to save costs)
 ./manage-aws-instances.sh stop
 
-# Destruir infraestructura completa (¡CUIDADO!)
+# Destroy complete infrastructure (CAREFUL!)
 ./manage-aws-instances.sh destroy
 ```
 
-### Destrucción Completa de Infraestructura
+### Complete Infrastructure Destruction
 
-El comando `destroy` realiza una limpieza completa:
+The `destroy` command performs a complete cleanup:
 
-1. ✅ Termina las instancias EC2
-2. ✅ Libera las Elastic IPs (evita cargos)
-3. ✅ Detecta y permite eliminar volúmenes EBS huérfanos
-4. ✅ Limpia Security Groups (con reintentos automáticos)
-5. ✅ Opcionalmente elimina el Key Pair de AWS
+1. ✅ Terminates EC2 instances
+2. ✅ Releases Elastic IPs (avoids charges)
+3. ✅ Detects and allows deletion of orphaned EBS volumes
+4. ✅ Cleans up Security Groups (with automatic retries)
+5. ✅ Optionally deletes the AWS Key Pair
 
-**Importante:**
-- Requiere doble confirmación
-- Debes escribir "DESTROY" para confirmar
-- El archivo local `.pem` NO se elimina automáticamente
-- El volumen de 1000 GB de Bitcoin se puede conservar si lo deseas
+**Important:**
+- Requires double confirmation
+- You must type "DESTROY" to confirm
+- The local `.pem` file is NOT automatically deleted
+- The 1000 GB Bitcoin volume can be preserved if desired
 
-## Seguridad
+## Security
 
-⚠️ **IMPORTANTE**: Nunca commitas archivos sensibles al repositorio.
+⚠️ **IMPORTANT**: Never commit sensitive files to the repository.
 
-Los siguientes archivos contienen información sensible y están en `.gitignore`:
-- `aws-config.env` - Credenciales y configuración
-- `aws-infrastructure.txt` - IPs y detalles de infraestructura
-- `*.pem` - Claves privadas SSH
-- `.env` - Variables de entorno
+The following files contain sensitive information and are in `.gitignore`:
+- `aws-config.env` - Credentials and configuration
+- `aws-infrastructure.txt` - IPs and infrastructure details
+- `*.pem` - SSH private keys
+- `.env` - Environment variables
 
-## Costos AWS
+## AWS Costs
 
-Ten en cuenta los costos de AWS al usar estos scripts:
+Keep in mind AWS costs when using these scripts:
 
-| Recurso | Costo Estimado | Notas |
+| Resource | Estimated Cost | Notes |
 |---------|----------------|-------|
-| t3.large (node01) | ~$0.08/hora | Solo cuando está running |
-| t3.medium (web01) | ~$0.04/hora | Solo cuando está running |
-| EBS 1000 GB (gp3) | ~$80/mes | Permanente mientras exista |
-| EBS 100 GB (gp3) | ~$8/mes | Permanente mientras exista |
-| Elastic IP (en uso) | Gratis | |
-| Elastic IP (no asociada) | ~$3.6/mes | ¡Elimínala con destroy! |
+| t3.large (node01) | ~$0.08/hour | Only when running |
+| t3.medium (web01) | ~$0.04/hour | Only when running |
+| EBS 1000 GB (gp3) | ~$80/month | Permanent while it exists |
+| EBS 100 GB (gp3) | ~$8/month | Permanent while it exists |
+| Elastic IP (in use) | Free | |
+| Elastic IP (unassociated) | ~$3.6/month | Delete it with destroy! |
 
-**Tip para ahorrar:**
-- Usa `stop` en lugar de `destroy` si planeas volver a usar las instancias
-- Las instancias stopped NO generan costo de compute, solo de storage
-- Ejecuta `destroy` completamente si ya no necesitas la infraestructura
+**Saving tip:**
+- Use `stop` instead of `destroy` if you plan to reuse the instances
+- Stopped instances do NOT generate compute costs, only storage
+- Run `destroy` completely if you no longer need the infrastructure
 
-## Contribuir
+## Contributing
 
-Este proyecto está en desarrollo activo. Contribuciones son bienvenidas:
+This project is in active development. Contributions are welcome:
 
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/nuevo-proveedor`)
-3. Commit tus cambios (`git commit -m 'Add: soporte para GCP'`)
-4. Push a la rama (`git push origin feature/nuevo-proveedor`)
-5. Abre un Pull Request
+1. Fork the project
+2. Create a branch for your feature (`git checkout -b feature/new-provider`)
+3. Commit your changes (`git commit -m 'Add: GCP support'`)
+4. Push to the branch (`git push origin feature/new-provider`)
+5. Open a Pull Request
 
 ## Roadmap
 
-Ver [TODO.md](TODO.md) para detalles sobre:
-- Próximos proveedores cloud (GCP, Azure, DigitalOcean, etc.)
-- Mejoras planeadas
-- Features en desarrollo
+See [TODO.md](TODO.md) for details about:
+- Upcoming cloud providers (GCP, Azure, DigitalOcean, etc.)
+- Planned improvements
+- Features in development
 
-## Licencia
+## License
 
-[Por definir]
+[To be defined]
 
-## Contacto
+## Contact
 
-[Tu información de contacto o del proyecto peer-observer]
+[Your contact information or peer-observer project contact]
 
 ---
 
-**Nota**: Desarrollado inicialmente para gestionar la infraestructura de [peer-observer](https://github.com/0xB10C/peer-observer).
+**Note**: Initially developed to manage the infrastructure for [peer-observer](https://github.com/0xB10C/peer-observer).

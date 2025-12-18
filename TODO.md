@@ -1,178 +1,178 @@
 # TODO - Cloud Infrastructure Manager
 
-## Próximos Proveedores Cloud
+## Upcoming Cloud Providers
 
 ### 🔲 Google Cloud Platform (GCP)
-- [ ] Script de creación de infraestructura (Compute Engine)
-- [ ] Script de gestión de instancias
-- [ ] Documentación específica de GCP
-- [ ] Gestión de discos persistentes
-- [ ] Configuración de Firewall rules
+- [ ] Infrastructure creation script (Compute Engine)
+- [ ] Instance management script
+- [ ] GCP-specific documentation
+- [ ] Persistent disk management
+- [ ] Firewall rules configuration
 
-**Directorio:** `gcp/`
+**Directory:** `gcp/`
 
 ### 🔲 Microsoft Azure
-- [ ] Script de creación de infraestructura (Virtual Machines)
-- [ ] Script de gestión de instancias
-- [ ] Documentación específica de Azure
-- [ ] Gestión de discos gestionados
-- [ ] Configuración de Network Security Groups
+- [ ] Infrastructure creation script (Virtual Machines)
+- [ ] Instance management script
+- [ ] Azure-specific documentation
+- [ ] Managed disk management
+- [ ] Network Security Groups configuration
 
-**Directorio:** `azure/`
+**Directory:** `azure/`
 
 ### 🔲 DigitalOcean
-- [ ] Script de creación de infraestructura (Droplets)
-- [ ] Script de gestión de droplets
-- [ ] Documentación específica de DigitalOcean
-- [ ] Gestión de volúmenes
-- [ ] Configuración de Firewalls
+- [ ] Infrastructure creation script (Droplets)
+- [ ] Droplet management script
+- [ ] DigitalOcean-specific documentation
+- [ ] Volume management
+- [ ] Firewall configuration
 
-**Directorio:** `digitalocean/`
+**Directory:** `digitalocean/`
 
 ### 🔲 Hetzner Cloud
-- [ ] Script de creación de infraestructura
-- [ ] Script de gestión de servers
-- [ ] Documentación específica de Hetzner
-- [ ] Gestión de volúmenes
-- [ ] Configuración de Firewalls
+- [ ] Infrastructure creation script
+- [ ] Server management script
+- [ ] Hetzner-specific documentation
+- [ ] Volume management
+- [ ] Firewall configuration
 
-**Directorio:** `hetzner/`
+**Directory:** `hetzner/`
 
 ### 🔲 Oracle Cloud Infrastructure (OCI)
-- [ ] Script de creación de infraestructura
-- [ ] Script de gestión de instancias
-- [ ] Documentación específica de OCI
-- [ ] Aprovechar el tier gratuito permanente
+- [ ] Infrastructure creation script
+- [ ] Instance management script
+- [ ] OCI-specific documentation
+- [ ] Leverage the permanent free tier
 
-**Directorio:** `oracle/`
+**Directory:** `oracle/`
 
 ### 🔲 Linode (Akamai)
-- [ ] Script de creación de infraestructura
-- [ ] Script de gestión de linodes
-- [ ] Documentación específica de Linode
+- [ ] Infrastructure creation script
+- [ ] Linode management script
+- [ ] Linode-specific documentation
 
-**Directorio:** `linode/`
+**Directory:** `linode/`
 
-## Mejoras para AWS
+## AWS Improvements
 
-### Gestión
-- [ ] Comando para redimensionar instancias (cambiar instance type)
-- [ ] Comando para crear snapshots de volúmenes EBS
-- [ ] Comando para restaurar desde snapshots
-- [ ] Script de backup automatizado
-- [ ] Gestión de múltiples regiones
-- [ ] Soporte para Auto Scaling Groups
+### Management
+- [ ] Command to resize instances (change instance type)
+- [ ] Command to create EBS volume snapshots
+- [ ] Command to restore from snapshots
+- [ ] Automated backup script
+- [ ] Multi-region management
+- [ ] Auto Scaling Groups support
 
-### Monitoreo y Costos
-- [ ] Script para mostrar costos estimados mensuales
-- [ ] Alertas de costos (CloudWatch)
-- [ ] Dashboard de uso de recursos
-- [ ] Exportar métricas de CloudWatch
+### Monitoring and Costs
+- [ ] Script to show estimated monthly costs
+- [ ] Cost alerts (CloudWatch)
+- [ ] Resource usage dashboard
+- [ ] Export CloudWatch metrics
 
-### Seguridad
-- [ ] Auditoría de Security Groups
-- [ ] Rotación automática de keys
-- [ ] Integración con AWS Secrets Manager
-- [ ] Habilitar cifrado en volúmenes EBS
-- [ ] MFA para operaciones críticas
+### Security
+- [ ] Security Group audit
+- [ ] Automatic key rotation
+- [ ] AWS Secrets Manager integration
+- [ ] Enable encryption on EBS volumes
+- [ ] MFA for critical operations
 
-### Redes
-- [ ] Configuración de VPC personalizada
-- [ ] Soporte para subnets privadas/públicas
-- [ ] VPN setup (OpenVPN o WireGuard)
+### Networking
+- [ ] Custom VPC configuration
+- [ ] Private/public subnet support
+- [ ] VPN setup (OpenVPN or WireGuard)
 - [ ] NAT Gateway configuration
 
-## Features Generales del Proyecto
+## General Project Features
 
-### Arquitectura Multi-Cloud
-- [ ] Script unificado para gestionar múltiples proveedores
-- [ ] Configuración centralizada (YAML o JSON)
-- [ ] Migración entre proveedores
-- [ ] Comparación de costos entre proveedores
+### Multi-Cloud Architecture
+- [ ] Unified script to manage multiple providers
+- [ ] Centralized configuration (YAML or JSON)
+- [ ] Migration between providers
+- [ ] Cost comparison between providers
 
-### Automatización
-- [ ] Integración con Terraform
-- [ ] Integración con Ansible para configuración
-- [ ] CI/CD para deploys automáticos
-- [ ] Webhooks para notificaciones (Slack, Discord)
+### Automation
+- [ ] Terraform integration
+- [ ] Ansible integration for configuration
+- [ ] CI/CD for automatic deployments
+- [ ] Webhooks for notifications (Slack, Discord)
 
-### Documentación
-- [ ] Guías de migración entre proveedores
-- [ ] Video tutoriales
+### Documentation
+- [ ] Migration guides between providers
+- [ ] Video tutorials
 - [ ] Troubleshooting guide
-- [ ] FAQ sección
-- [ ] Comparativa de costos entre proveedores
+- [ ] FAQ section
+- [ ] Cost comparison between providers
 
 ### Testing
-- [ ] Tests unitarios para scripts bash
-- [ ] Tests de integración
-- [ ] Validación de sintaxis automatizada
-- [ ] Dry-run mode para todos los scripts
+- [ ] Unit tests for bash scripts
+- [ ] Integration tests
+- [ ] Automated syntax validation
+- [ ] Dry-run mode for all scripts
 
-### CLI Mejorada
-- [ ] Tool unificado en Python o Go
-- [ ] Output en JSON para integración
-- [ ] Modo interactivo (TUI)
-- [ ] Autocompletado para shells
-- [ ] Configuración global (`~/.cloud-infra-manager/config`)
+### Enhanced CLI
+- [ ] Unified tool in Python or Go
+- [ ] JSON output for integration
+- [ ] Interactive mode (TUI)
+- [ ] Shell autocompletion
+- [ ] Global configuration (`~/.cloud-infra-manager/config`)
 
-## Casos de Uso Adicionales
+## Additional Use Cases
 
-### Infraestructuras Específicas
-- [ ] Template para WordPress hosting
-- [ ] Template para Kubernetes clusters
-- [ ] Template para bases de datos (PostgreSQL, MySQL)
-- [ ] Template para CI/CD runners
-- [ ] Template para Bitcoin/Lightning nodes
-- [ ] Template para desarrollo (staging environments)
+### Specific Infrastructures
+- [ ] Template for WordPress hosting
+- [ ] Template for Kubernetes clusters
+- [ ] Template for databases (PostgreSQL, MySQL)
+- [ ] Template for CI/CD runners
+- [ ] Template for Bitcoin/Lightning nodes
+- [ ] Template for development (staging environments)
 
-### Gestión de Proyectos
-- [ ] Soporte para múltiples proyectos
-- [ ] Tags y etiquetado consistente
-- [ ] Inventario de recursos por proyecto
-- [ ] Costos separados por proyecto
+### Project Management
+- [ ] Multiple project support
+- [ ] Consistent tagging and labeling
+- [ ] Resource inventory by project
+- [ ] Separate costs by project
 
-## Optimizaciones
+## Optimizations
 
 ### Performance
-- [ ] Operaciones paralelas (crear múltiples recursos simultáneamente)
-- [ ] Caché de consultas API
-- [ ] Uso de AWS SDKs en lugar de CLI (más rápido)
+- [ ] Parallel operations (create multiple resources simultaneously)
+- [ ] API query caching
+- [ ] Use AWS SDKs instead of CLI (faster)
 
-### Usabilidad
-- [ ] Alias y shortcuts personalizables
-- [ ] Templates de configuración reutilizables
-- [ ] Wizard interactivo para configuración inicial
-- [ ] Validación de configuración antes de ejecutar
+### Usability
+- [ ] Customizable aliases and shortcuts
+- [ ] Reusable configuration templates
+- [ ] Interactive wizard for initial configuration
+- [ ] Configuration validation before execution
 
-## Prioridades
+## Priorities
 
-**Alta Prioridad (Q1 2026)**
-1. Limpieza completa del código AWS existente
-2. Testing y validación exhaustiva de scripts AWS
-3. Documentación completa para AWS
-4. Soporte básico para DigitalOcean o Hetzner
+**High Priority (Q1 2026)**
+1. Complete cleanup of existing AWS code
+2. Thorough testing and validation of AWS scripts
+3. Complete AWS documentation
+4. Basic support for DigitalOcean or Hetzner
 
-**Media Prioridad (Q2 2026)**
-1. Script unificado multi-cloud
-2. Soporte para GCP
-3. Comparativa de costos
-4. Monitoreo básico
+**Medium Priority (Q2 2026)**
+1. Unified multi-cloud script
+2. GCP support
+3. Cost comparison
+4. Basic monitoring
 
-**Baja Prioridad (Futuro)**
-1. Resto de proveedores cloud
+**Low Priority (Future)**
+1. Remaining cloud providers
 2. Terraform integration
-3. CLI avanzada en Python/Go
-4. Templates para casos de uso específicos
+3. Advanced CLI in Python/Go
+4. Templates for specific use cases
 
-## Contribuciones
+## Contributions
 
-Si quieres contribuir con alguno de estos TODOs:
-1. Abre un issue para discutir el feature
-2. Haz fork del proyecto
-3. Implementa el feature siguiendo las guías de estilo
-4. Envía un Pull Request
+If you want to contribute to any of these TODOs:
+1. Open an issue to discuss the feature
+2. Fork the project
+3. Implement the feature following the style guides
+4. Submit a Pull Request
 
 ---
 
-**Última actualización:** 2025-12-18
+**Last updated:** 2025-12-18
