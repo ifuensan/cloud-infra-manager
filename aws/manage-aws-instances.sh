@@ -32,6 +32,31 @@ fi
 NODE_INSTANCE=$NODE_INSTANCE_ID
 WEB_INSTANCE=$WEB_INSTANCE_ID
 
+# Function to check AWS session validity
+check_aws_session() {
+    # Try to get caller identity to check if session is valid
+    if ! aws sts get-caller-identity --region $AWS_REGION &>/dev/null; then
+        echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${RED}  ✗ AWS Session Expired${NC}"
+        echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo -e "${YELLOW}Your AWS session has expired.${NC}"
+        echo ""
+        echo "Please reauthenticate using:"
+        echo ""
+        echo -e "  ${GREEN}aws sso login${NC}"
+        echo ""
+        echo "Or if you're using a different authentication method:"
+        echo ""
+        echo -e "  ${GREEN}aws configure sso${NC}"
+        echo ""
+        exit 1
+    fi
+}
+
+# Check AWS session before proceeding
+check_aws_session
+
 # Function to show instance status
 show_status() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

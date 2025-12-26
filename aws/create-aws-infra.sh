@@ -80,12 +80,25 @@ case "$KEY_OPTION" in
         else
             echo ""
             echo "Available key pairs:"
-            echo "$EXISTING_KEYS" | tr '\t' '\n' | nl
+            # Convert to array for selection
+            readarray -t KEY_ARRAY <<< "$(echo "$EXISTING_KEYS" | tr '\t' '\n')"
+            for i in "${!KEY_ARRAY[@]}"; do
+                echo "     $((i+1))    ${KEY_ARRAY[$i]}"
+            done
             echo ""
-            read -p "Enter the key pair name to use (or press Enter for '$KEY_NAME'): " SELECTED_KEY
+            read -p "Enter the number or name of the key pair (or press Enter for '$KEY_NAME'): " SELECTED_KEY
 
             if [ -z "$SELECTED_KEY" ]; then
                 SELECTED_KEY=$KEY_NAME
+            elif [[ "$SELECTED_KEY" =~ ^[0-9]+$ ]]; then
+                # User entered a number, convert to key name
+                INDEX=$((SELECTED_KEY - 1))
+                if [ $INDEX -ge 0 ] && [ $INDEX -lt ${#KEY_ARRAY[@]} ]; then
+                    SELECTED_KEY="${KEY_ARRAY[$INDEX]}"
+                else
+                    echo -e "${RED}✗ Invalid selection number${NC}"
+                    exit 1
+                fi
             fi
 
             # Verify selected key exists
@@ -228,91 +241,333 @@ echo -e "${GREEN}✓ Ubuntu 22.04 AMI: $UBUNTU_AMI${NC}"
 
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}  Step 3: Creating EC2 instances${NC}"
+echo -e "${BLUE}  Step 3: Checking Existing Instances${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Create node01
-echo "Creating peer-observer-node01..."
-NODE_INSTANCE=$(aws ec2 run-instances \
+# Check for existing instances
+echo "Checking for existing instances..."
+
+EXISTING_NODE=$(aws ec2 describe-instances \
     --region $AWS_REGION \
-    --image-id $UBUNTU_AMI \
-    --instance-type $INSTANCE_TYPE_NODE \
-    --key-name $KEY_NAME \
-    --security-group-ids $NODE_SG \
-    --block-device-mappings "[
-        {
-            \"DeviceName\":\"/dev/sda1\",
-            \"Ebs\":{
-                \"VolumeSize\":50,
-                \"VolumeType\":\"gp3\",
-                \"DeleteOnTermination\":true
-            }
-        },
-        {
-            \"DeviceName\":\"/dev/sdf\",
-            \"Ebs\":{
-                \"VolumeSize\":$BITCOIN_VOLUME_SIZE,
-                \"VolumeType\":\"gp3\",
-                \"DeleteOnTermination\":false
-            }
-        }
-    ]" \
-    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=peer-observer-node01},{Key=Project,Value=peer-observer}]" \
-    --query 'Instances[0].InstanceId' \
-    --output text)
+    --filters "Name=tag:Name,Values=peer-observer-node01" "Name=instance-state-name,Values=running,stopped,stopping,pending" \
+    --query 'Reservations[0].Instances[0].InstanceId' \
+    --output text 2>/dev/null)
 
-echo -e "${GREEN}✓ Node01 created: $NODE_INSTANCE${NC}"
-
-# Create web01
-echo ""
-echo "Creating peer-observer-web01..."
-WEB_INSTANCE=$(aws ec2 run-instances \
+EXISTING_WEB=$(aws ec2 describe-instances \
     --region $AWS_REGION \
-    --image-id $UBUNTU_AMI \
-    --instance-type $INSTANCE_TYPE_WEB \
-    --key-name $KEY_NAME \
-    --security-group-ids $WEB_SG \
-    --block-device-mappings "[
-        {
-            \"DeviceName\":\"/dev/sda1\",
-            \"Ebs\":{
-                \"VolumeSize\":$WEB_VOLUME_SIZE,
-                \"VolumeType\":\"gp3\",
-                \"DeleteOnTermination\":true
+    --filters "Name=tag:Name,Values=peer-observer-web01" "Name=instance-state-name,Values=running,stopped,stopping,pending" \
+    --query 'Reservations[0].Instances[0].InstanceId' \
+    --output text 2>/dev/null)
+
+NODE_EXISTS=false
+WEB_EXISTS=false
+
+if [ "$EXISTING_NODE" != "None" ] && [ -n "$EXISTING_NODE" ]; then
+    NODE_EXISTS=true
+    NODE_STATE=$(aws ec2 describe-instances \
+        --region $AWS_REGION \
+        --instance-ids $EXISTING_NODE \
+        --query 'Reservations[0].Instances[0].State.Name' \
+        --output text)
+    echo -e "${YELLOW}✓ Found existing node01: $EXISTING_NODE (state: $NODE_STATE)${NC}"
+fi
+
+if [ "$EXISTING_WEB" != "None" ] && [ -n "$EXISTING_WEB" ]; then
+    WEB_EXISTS=true
+    WEB_STATE=$(aws ec2 describe-instances \
+        --region $AWS_REGION \
+        --instance-ids $EXISTING_WEB \
+        --query 'Reservations[0].Instances[0].State.Name' \
+        --output text)
+    echo -e "${YELLOW}✓ Found existing web01: $EXISTING_WEB (state: $WEB_STATE)${NC}"
+fi
+
+if [ "$NODE_EXISTS" = false ] && [ "$WEB_EXISTS" = false ]; then
+    echo "No existing instances found."
+fi
+
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Step 4: Instance Selection${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+CREATE_NODE=false
+CREATE_WEB=false
+
+# If both exist, ask if user wants to skip or recreate
+if [ "$NODE_EXISTS" = true ] && [ "$WEB_EXISTS" = true ]; then
+    echo -e "${YELLOW}Both instances already exist!${NC}"
+    echo ""
+    echo "What would you like to do?"
+    echo "  1) Skip creation (use existing instances)"
+    echo "  2) Create new instances (you'll need to terminate existing ones first)"
+    echo ""
+    read -p "Select option (1/2): " EXISTING_OPTION
+
+    case "$EXISTING_OPTION" in
+        1)
+            echo -e "${GREEN}Using existing instances...${NC}"
+            # Load existing data and skip creation
+            NODE_INSTANCE=$EXISTING_NODE
+            WEB_INSTANCE=$EXISTING_WEB
+            SKIP_CREATION=true
+            ;;
+        2)
+            echo -e "${RED}✗ Please terminate existing instances first using manage-aws-instances.sh destroy${NC}"
+            exit 1
+            ;;
+        *)
+            echo -e "${RED}✗ Invalid option${NC}"
+            exit 1
+            ;;
+    esac
+# If only node exists
+elif [ "$NODE_EXISTS" = true ] && [ "$WEB_EXISTS" = false ]; then
+    echo -e "${YELLOW}Node01 already exists: $EXISTING_NODE${NC}"
+    echo ""
+    read -p "Do you want to create web01? (yes/no): " CREATE_WEB_ANSWER
+
+    if [ "$CREATE_WEB_ANSWER" = "yes" ]; then
+        CREATE_WEB=true
+        NODE_INSTANCE=$EXISTING_NODE
+        echo -e "${GREEN}Will create web01 and use existing node01${NC}"
+    else
+        echo -e "${GREEN}Using existing node01 only${NC}"
+        NODE_INSTANCE=$EXISTING_NODE
+        SKIP_CREATION=true
+    fi
+# If only web exists
+elif [ "$NODE_EXISTS" = false ] && [ "$WEB_EXISTS" = true ]; then
+    echo -e "${YELLOW}Web01 already exists: $EXISTING_WEB${NC}"
+    echo ""
+    read -p "Do you want to create node01? (yes/no): " CREATE_NODE_ANSWER
+
+    if [ "$CREATE_NODE_ANSWER" = "yes" ]; then
+        CREATE_NODE=true
+        WEB_INSTANCE=$EXISTING_WEB
+        echo -e "${GREEN}Will create node01 and use existing web01${NC}"
+    else
+        echo -e "${GREEN}Using existing web01 only${NC}"
+        WEB_INSTANCE=$EXISTING_WEB
+        SKIP_CREATION=true
+    fi
+# If neither exists
+else
+    echo "Which instances do you want to create?"
+    echo "  1) Both instances (node01 + web01)"
+    echo "  2) Only node instance (peer-observer-node01)"
+    echo "  3) Only web instance (peer-observer-web01)"
+    echo ""
+    read -p "Select option (1/2/3): " INSTANCE_OPTION
+
+    case "$INSTANCE_OPTION" in
+        1)
+            CREATE_NODE=true
+            CREATE_WEB=true
+            echo -e "${GREEN}Creating both instances...${NC}"
+            ;;
+        2)
+            CREATE_NODE=true
+            echo -e "${GREEN}Creating only node instance...${NC}"
+            ;;
+        3)
+            CREATE_WEB=true
+            echo -e "${GREEN}Creating only web instance...${NC}"
+            ;;
+        *)
+            echo -e "${RED}✗ Invalid option${NC}"
+            exit 1
+            ;;
+    esac
+fi
+
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Step 5: Creating EC2 instances${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+INSTANCES_TO_WAIT=""
+
+# Skip creation if using existing instances
+if [ "${SKIP_CREATION:-false}" = true ]; then
+    echo -e "${GREEN}Using existing instances, skipping creation...${NC}"
+
+    # Get data from existing instances for config file
+    if [ -n "$NODE_INSTANCE" ]; then
+        NODE_IP=$(aws ec2 describe-instances \
+            --region $AWS_REGION \
+            --instance-ids $NODE_INSTANCE \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+
+        # Get Elastic IP allocation if exists
+        NODE_ALLOC=$(aws ec2 describe-addresses \
+            --region $AWS_REGION \
+            --filters "Name=instance-id,Values=$NODE_INSTANCE" \
+            --query 'Addresses[0].AllocationId' \
+            --output text 2>/dev/null)
+
+        if [ "$NODE_ALLOC" = "None" ] || [ -z "$NODE_ALLOC" ]; then
+            NODE_ALLOC=""
+        fi
+    fi
+
+    if [ -n "$WEB_INSTANCE" ]; then
+        WEB_IP=$(aws ec2 describe-instances \
+            --region $AWS_REGION \
+            --instance-ids $WEB_INSTANCE \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+
+        # Get Elastic IP allocation if exists
+        WEB_ALLOC=$(aws ec2 describe-addresses \
+            --region $AWS_REGION \
+            --filters "Name=instance-id,Values=$WEB_INSTANCE" \
+            --query 'Addresses[0].AllocationId' \
+            --output text 2>/dev/null)
+
+        if [ "$WEB_ALLOC" = "None" ] || [ -z "$WEB_ALLOC" ]; then
+            WEB_ALLOC=""
+        fi
+    fi
+else
+    # Create node01 if requested
+    if [ "$CREATE_NODE" = true ]; then
+    echo "Creating peer-observer-node01..."
+    NODE_INSTANCE=$(aws ec2 run-instances \
+        --region $AWS_REGION \
+        --image-id $UBUNTU_AMI \
+        --instance-type $INSTANCE_TYPE_NODE \
+        --key-name $KEY_NAME \
+        --security-group-ids $NODE_SG \
+        --block-device-mappings "[
+            {
+                \"DeviceName\":\"/dev/sda1\",
+                \"Ebs\":{
+                    \"VolumeSize\":50,
+                    \"VolumeType\":\"gp3\",
+                    \"DeleteOnTermination\":true
+                }
+            },
+            {
+                \"DeviceName\":\"/dev/sdf\",
+                \"Ebs\":{
+                    \"VolumeSize\":$BITCOIN_VOLUME_SIZE,
+                    \"VolumeType\":\"gp3\",
+                    \"DeleteOnTermination\":false
+                }
             }
-        }
-    ]" \
-    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=peer-observer-web01},{Key=Project,Value=peer-observer}]" \
-    --query 'Instances[0].InstanceId' \
-    --output text)
+        ]" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=peer-observer-node01},{Key=Project,Value=peer-observer}]" \
+        --query 'Instances[0].InstanceId' \
+        --output text)
 
-echo -e "${GREEN}✓ Web01 created: $WEB_INSTANCE${NC}"
+    echo -e "${GREEN}✓ Node01 created: $NODE_INSTANCE${NC}"
+    INSTANCES_TO_WAIT="$NODE_INSTANCE"
+fi
 
-echo ""
-echo "Waiting for instances to reach 'running' state..."
-aws ec2 wait instance-running --region $AWS_REGION --instance-ids $NODE_INSTANCE $WEB_INSTANCE
-echo -e "${GREEN}✓ Instances running${NC}"
+# Create web01 if requested
+if [ "$CREATE_WEB" = true ]; then
+    echo ""
+    echo "Creating peer-observer-web01..."
+    WEB_INSTANCE=$(aws ec2 run-instances \
+        --region $AWS_REGION \
+        --image-id $UBUNTU_AMI \
+        --instance-type $INSTANCE_TYPE_WEB \
+        --key-name $KEY_NAME \
+        --security-group-ids $WEB_SG \
+        --block-device-mappings "[
+            {
+                \"DeviceName\":\"/dev/sda1\",
+                \"Ebs\":{
+                    \"VolumeSize\":$WEB_VOLUME_SIZE,
+                    \"VolumeType\":\"gp3\",
+                    \"DeleteOnTermination\":true
+                }
+            }
+        ]" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=peer-observer-web01},{Key=Project,Value=peer-observer}]" \
+        --query 'Instances[0].InstanceId' \
+        --output text)
+
+        echo -e "${GREEN}✓ Web01 created: $WEB_INSTANCE${NC}"
+        INSTANCES_TO_WAIT="$INSTANCES_TO_WAIT $WEB_INSTANCE"
+    fi
+
+    if [ -n "$INSTANCES_TO_WAIT" ]; then
+        echo ""
+        echo "Waiting for instances to reach 'running' state..."
+        aws ec2 wait instance-running --region $AWS_REGION --instance-ids $INSTANCES_TO_WAIT
+        echo -e "${GREEN}✓ Instances running${NC}"
+    fi
+fi
 
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}  Step 4: Allocating Elastic IPs${NC}"
+echo -e "${BLUE}  Step 6: Allocating Elastic IPs${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Allocate and associate Elastic IP for node01
-echo "Allocating Elastic IP for node01..."
-NODE_ALLOC=$(aws ec2 allocate-address --region $AWS_REGION --domain vpc --query 'AllocationId' --output text)
-aws ec2 associate-address --region $AWS_REGION --instance-id $NODE_INSTANCE --allocation-id $NODE_ALLOC > /dev/null
-NODE_IP=$(aws ec2 describe-addresses --region $AWS_REGION --allocation-ids $NODE_ALLOC --query 'Addresses[0].PublicIp' --output text)
-echo -e "${GREEN}✓ Node01 IP: $NODE_IP${NC}"
+# Allocate and associate Elastic IP for node01 if created
+if [ "$CREATE_NODE" = true ]; then
+    echo "Allocating Elastic IP for node01..."
+    NODE_ALLOC=$(aws ec2 allocate-address --region $AWS_REGION --domain vpc --query 'AllocationId' --output text)
+    aws ec2 associate-address --region $AWS_REGION --instance-id $NODE_INSTANCE --allocation-id $NODE_ALLOC > /dev/null
+    NODE_IP=$(aws ec2 describe-addresses --region $AWS_REGION --allocation-ids $NODE_ALLOC --query 'Addresses[0].PublicIp' --output text)
+    echo -e "${GREEN}✓ Node01 IP: $NODE_IP${NC}"
+# Get existing node01 data if not creating it
+elif [ -n "$NODE_INSTANCE" ]; then
+    echo "Getting data from existing node01..."
+    NODE_IP=$(aws ec2 describe-instances \
+        --region $AWS_REGION \
+        --instance-ids $NODE_INSTANCE \
+        --query 'Reservations[0].Instances[0].PublicIpAddress' \
+        --output text)
 
-# Allocate and associate Elastic IP for web01
-echo "Allocating Elastic IP for web01..."
-WEB_ALLOC=$(aws ec2 allocate-address --region $AWS_REGION --domain vpc --query 'AllocationId' --output text)
-aws ec2 associate-address --region $AWS_REGION --instance-id $WEB_INSTANCE --allocation-id $WEB_ALLOC > /dev/null
-WEB_IP=$(aws ec2 describe-addresses --region $AWS_REGION --allocation-ids $WEB_ALLOC --query 'Addresses[0].PublicIp' --output text)
-echo -e "${GREEN}✓ Web01 IP: $WEB_IP${NC}"
+    NODE_ALLOC=$(aws ec2 describe-addresses \
+        --region $AWS_REGION \
+        --filters "Name=instance-id,Values=$NODE_INSTANCE" \
+        --query 'Addresses[0].AllocationId' \
+        --output text 2>/dev/null)
+
+    if [ "$NODE_ALLOC" = "None" ] || [ -z "$NODE_ALLOC" ]; then
+        NODE_ALLOC=""
+    fi
+
+    echo -e "${GREEN}✓ Node01 IP: $NODE_IP${NC}"
+fi
+
+# Allocate and associate Elastic IP for web01 if created
+if [ "$CREATE_WEB" = true ]; then
+    echo "Allocating Elastic IP for web01..."
+    WEB_ALLOC=$(aws ec2 allocate-address --region $AWS_REGION --domain vpc --query 'AllocationId' --output text)
+    aws ec2 associate-address --region $AWS_REGION --instance-id $WEB_INSTANCE --allocation-id $WEB_ALLOC > /dev/null
+    WEB_IP=$(aws ec2 describe-addresses --region $AWS_REGION --allocation-ids $WEB_ALLOC --query 'Addresses[0].PublicIp' --output text)
+    echo -e "${GREEN}✓ Web01 IP: $WEB_IP${NC}"
+# Get existing web01 data if not creating it
+elif [ -n "$WEB_INSTANCE" ]; then
+    echo "Getting data from existing web01..."
+    WEB_IP=$(aws ec2 describe-instances \
+        --region $AWS_REGION \
+        --instance-ids $WEB_INSTANCE \
+        --query 'Reservations[0].Instances[0].PublicIpAddress' \
+        --output text)
+
+    WEB_ALLOC=$(aws ec2 describe-addresses \
+        --region $AWS_REGION \
+        --filters "Name=instance-id,Values=$WEB_INSTANCE" \
+        --query 'Addresses[0].AllocationId' \
+        --output text 2>/dev/null)
+
+    if [ "$WEB_ALLOC" = "None" ] || [ -z "$WEB_ALLOC" ]; then
+        WEB_ALLOC=""
+    fi
+
+    echo -e "${GREEN}✓ Web01 IP: $WEB_IP${NC}"
+fi
 
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -322,20 +577,31 @@ echo ""
 
 echo -e "${GREEN}Infrastructure summary:${NC}"
 echo ""
-echo "  📦 Node01 (Bitcoin)"
-echo "     Instance ID: $NODE_INSTANCE"
-echo "     Public IP: $NODE_IP"
-echo "     Type: $INSTANCE_TYPE_NODE"
-echo "     Storage: 50GB (OS) + ${BITCOIN_VOLUME_SIZE}GB (Bitcoin)"
-echo ""
-echo "  🌐 Web01 (Dashboard)"
-echo "     Instance ID: $WEB_INSTANCE"
-echo "     Public IP: $WEB_IP"
-echo "     Type: $INSTANCE_TYPE_WEB"
-echo "     Storage: ${WEB_VOLUME_SIZE}GB"
-echo ""
+
+if [ "$CREATE_NODE" = true ]; then
+    echo "  📦 Node01 (Bitcoin)"
+    echo "     Instance ID: $NODE_INSTANCE"
+    echo "     Public IP: $NODE_IP"
+    echo "     Type: $INSTANCE_TYPE_NODE"
+    echo "     Storage: 50GB (OS) + ${BITCOIN_VOLUME_SIZE}GB (Bitcoin)"
+    echo ""
+fi
+
+if [ "$CREATE_WEB" = true ]; then
+    echo "  🌐 Web01 (Dashboard)"
+    echo "     Instance ID: $WEB_INSTANCE"
+    echo "     Public IP: $WEB_IP"
+    echo "     Type: $INSTANCE_TYPE_WEB"
+    echo "     Storage: ${WEB_VOLUME_SIZE}GB"
+    echo ""
+fi
 
 # Save configuration file
+# Load existing config if it exists
+if [ -f aws-config.env ]; then
+    source aws-config.env
+fi
+
 cat > aws-config.env << EOF
 # AWS Infrastructure Configuration - Peer Observer
 # This file is automatically generated by create-aws-infra.sh
@@ -348,18 +614,52 @@ AWS_REGION=$AWS_REGION
 KEY_NAME=$KEY_NAME
 
 # Node01 - Bitcoin Observation Node
+EOF
+
+if [ "$CREATE_NODE" = true ]; then
+    cat >> aws-config.env << EOF
 NODE_INSTANCE_ID=$NODE_INSTANCE
 NODE_IP=$NODE_IP
 NODE_EIP_ALLOCATION=$NODE_ALLOC
 NODE_SECURITY_GROUP=$NODE_SG
 NODE_INSTANCE_TYPE=$INSTANCE_TYPE_NODE
+EOF
+else
+    # Keep existing node values if not creating
+    cat >> aws-config.env << EOF
+NODE_INSTANCE_ID=${NODE_INSTANCE_ID:-}
+NODE_IP=${NODE_IP:-}
+NODE_EIP_ALLOCATION=${NODE_EIP_ALLOCATION:-}
+NODE_SECURITY_GROUP=${NODE_SECURITY_GROUP:-$NODE_SG}
+NODE_INSTANCE_TYPE=${NODE_INSTANCE_TYPE:-$INSTANCE_TYPE_NODE}
+EOF
+fi
+
+cat >> aws-config.env << EOF
 
 # Web01 - Dashboard & Monitoring
+EOF
+
+if [ "$CREATE_WEB" = true ]; then
+    cat >> aws-config.env << EOF
 WEB_INSTANCE_ID=$WEB_INSTANCE
 WEB_IP=$WEB_IP
 WEB_EIP_ALLOCATION=$WEB_ALLOC
 WEB_SECURITY_GROUP=$WEB_SG
 WEB_INSTANCE_TYPE=$INSTANCE_TYPE_WEB
+EOF
+else
+    # Keep existing web values if not creating
+    cat >> aws-config.env << EOF
+WEB_INSTANCE_ID=${WEB_INSTANCE_ID:-}
+WEB_IP=${WEB_IP:-}
+WEB_EIP_ALLOCATION=${WEB_EIP_ALLOCATION:-}
+WEB_SECURITY_GROUP=${WEB_SECURITY_GROUP:-$WEB_SG}
+WEB_INSTANCE_TYPE=${WEB_INSTANCE_TYPE:-$INSTANCE_TYPE_WEB}
+EOF
+fi
+
+cat >> aws-config.env << EOF
 
 # Last update timestamp
 LAST_UPDATE="$(date)"
@@ -375,6 +675,10 @@ Peer Observer AWS Infrastructure
 Creation date: $(date)
 Region: $AWS_REGION
 
+EOF
+
+if [ "$CREATE_NODE" = true ]; then
+    cat >> aws-infrastructure.txt << EOF
 Node01 (Bitcoin Observation Node)
 ---------------------------------
 Instance ID: $NODE_INSTANCE
@@ -383,6 +687,11 @@ Elastic IP Allocation: $NODE_ALLOC
 Security Group: $NODE_SG
 Instance Type: $INSTANCE_TYPE_NODE
 
+EOF
+fi
+
+if [ "$CREATE_WEB" = true ]; then
+    cat >> aws-infrastructure.txt << EOF
 Web01 (Dashboard & Monitoring)
 -------------------------------
 Instance ID: $WEB_INSTANCE
@@ -391,10 +700,27 @@ Elastic IP Allocation: $WEB_ALLOC
 Security Group: $WEB_SG
 Instance Type: $INSTANCE_TYPE_WEB
 
+EOF
+fi
+
+cat >> aws-infrastructure.txt << EOF
 SSH Connection
 --------------
+EOF
+
+if [ "$CREATE_NODE" = true ]; then
+    cat >> aws-infrastructure.txt << EOF
 Node01: ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$NODE_IP
+EOF
+fi
+
+if [ "$CREATE_WEB" = true ]; then
+    cat >> aws-infrastructure.txt << EOF
 Web01:  ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$WEB_IP
+EOF
+fi
+
+cat >> aws-infrastructure.txt << EOF
 
 Instance Management
 -------------------
@@ -405,7 +731,15 @@ Use ./manage-aws-instances.sh to start/stop instances:
 
 Next Steps
 ----------
+EOF
+
+if [ "$CREATE_WEB" = true ]; then
+    cat >> aws-infrastructure.txt << EOF
 1. Configure your domain pointing to: $WEB_IP
+EOF
+fi
+
+cat >> aws-infrastructure.txt << EOF
 2. Update infra.nix with IPs and configuration
 3. Deploy NixOS with nixos-anywhere
 EOF
@@ -417,26 +751,47 @@ echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━�
 echo -e "${YELLOW}  NEXT STEPS:${NC}"
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "1. ${BLUE}Configure your DNS domain:${NC}"
-echo "   Point your domain to the webserver IP: $WEB_IP"
-echo "   Example: observer.hacknodes.com → $WEB_IP"
+
+STEP_NUM=1
+
+if [ "$CREATE_WEB" = true ]; then
+    echo -e "${STEP_NUM}. ${BLUE}Configure your DNS domain:${NC}"
+    echo "   Point your domain to the webserver IP: $WEB_IP"
+    echo "   Example: observer.hacknodes.com → $WEB_IP"
+    echo ""
+    STEP_NUM=$((STEP_NUM + 1))
+fi
+
+echo -e "${STEP_NUM}. ${BLUE}Verify SSH connectivity:${NC}"
+if [ "$CREATE_NODE" = true ]; then
+    echo "   ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$NODE_IP"
+fi
+if [ "$CREATE_WEB" = true ]; then
+    echo "   ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$WEB_IP"
+fi
 echo ""
-echo -e "2. ${BLUE}Verify SSH connectivity:${NC}"
-echo "   ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$NODE_IP"
-echo "   ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$WEB_IP"
-echo ""
-echo -e "3. ${BLUE}Update infra.nix:${NC}"
+STEP_NUM=$((STEP_NUM + 1))
+
+echo -e "${STEP_NUM}. ${BLUE}Update infra.nix:${NC}"
 echo "   - Confirm WireGuard public keys"
-echo "   - Add your domain"
+if [ "$CREATE_WEB" = true ]; then
+    echo "   - Add your domain"
+fi
 echo "   - Update email for Let's Encrypt"
 echo ""
-echo -e "4. ${BLUE}Deploy NixOS with nixos-anywhere:${NC}"
-echo "   nix run github:nix-community/nixos-anywhere -- \\"
-echo "     --flake .#node01 \\"
-echo "     --target-host root@$NODE_IP"
-echo ""
-echo "   nix run github:nix-community/nixos-anywhere -- \\"
-echo "     --flake .#web01 \\"
-echo "     --target-host root@$WEB_IP"
-echo ""
+STEP_NUM=$((STEP_NUM + 1))
+
+echo -e "${STEP_NUM}. ${BLUE}Deploy NixOS with nixos-anywhere:${NC}"
+if [ "$CREATE_NODE" = true ]; then
+    echo "   nix run github:nix-community/nixos-anywhere -- \\"
+    echo "     --flake .#node01 \\"
+    echo "     --target-host root@$NODE_IP"
+    echo ""
+fi
+if [ "$CREATE_WEB" = true ]; then
+    echo "   nix run github:nix-community/nixos-anywhere -- \\"
+    echo "     --flake .#web01 \\"
+    echo "     --target-host root@$WEB_IP"
+    echo ""
+fi
 echo -e "${GREEN}Ready to deploy! 🚀${NC}"
