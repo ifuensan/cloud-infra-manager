@@ -511,10 +511,32 @@ echo -e "${BLUE}  Step 6: Allocating Elastic IPs${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
+# Function to find available Elastic IP or allocate a new one
+find_or_allocate_eip() {
+    local instance_name=$1
+
+    # Search for available (unassociated) Elastic IPs
+    echo "Searching for available Elastic IP for $instance_name..."
+    AVAILABLE_EIP=$(aws ec2 describe-addresses \
+        --region $AWS_REGION \
+        --filters "Name=domain,Values=vpc" \
+        --query 'Addresses[?AssociationId==`null`].AllocationId | [0]' \
+        --output text 2>/dev/null)
+
+    if [ "$AVAILABLE_EIP" != "None" ] && [ -n "$AVAILABLE_EIP" ]; then
+        echo -e "${GREEN}✓ Found available Elastic IP (reusing): $AVAILABLE_EIP${NC}"
+        echo "$AVAILABLE_EIP"
+    else
+        echo "No available Elastic IPs found. Allocating new one for $instance_name..."
+        NEW_EIP=$(aws ec2 allocate-address --region $AWS_REGION --domain vpc --query 'AllocationId' --output text)
+        echo -e "${GREEN}✓ New Elastic IP allocated: $NEW_EIP${NC}"
+        echo "$NEW_EIP"
+    fi
+}
+
 # Allocate and associate Elastic IP for node01 if created
 if [ "$CREATE_NODE" = true ]; then
-    echo "Allocating Elastic IP for node01..."
-    NODE_ALLOC=$(aws ec2 allocate-address --region $AWS_REGION --domain vpc --query 'AllocationId' --output text)
+    NODE_ALLOC=$(find_or_allocate_eip "node01")
     aws ec2 associate-address --region $AWS_REGION --instance-id $NODE_INSTANCE --allocation-id $NODE_ALLOC > /dev/null
     NODE_IP=$(aws ec2 describe-addresses --region $AWS_REGION --allocation-ids $NODE_ALLOC --query 'Addresses[0].PublicIp' --output text)
     echo -e "${GREEN}✓ Node01 IP: $NODE_IP${NC}"
@@ -542,8 +564,7 @@ fi
 
 # Allocate and associate Elastic IP for web01 if created
 if [ "$CREATE_WEB" = true ]; then
-    echo "Allocating Elastic IP for web01..."
-    WEB_ALLOC=$(aws ec2 allocate-address --region $AWS_REGION --domain vpc --query 'AllocationId' --output text)
+    WEB_ALLOC=$(find_or_allocate_eip "web01")
     aws ec2 associate-address --region $AWS_REGION --instance-id $WEB_INSTANCE --allocation-id $WEB_ALLOC > /dev/null
     WEB_IP=$(aws ec2 describe-addresses --region $AWS_REGION --allocation-ids $WEB_ALLOC --query 'Addresses[0].PublicIp' --output text)
     echo -e "${GREEN}✓ Web01 IP: $WEB_IP${NC}"
