@@ -64,12 +64,6 @@ recreate_config_from_aws() {
         fi
     done <<< "$NODE_INSTANCES"
 
-    # Inform user if multiple nodes found
-    if [ $NODE_COUNT -gt 1 ]; then
-        echo ""
-        echo -e "${YELLOW}ℹ  Multiple node instances found. Using $SELECTED_NODE_NAME for operations.${NC}"
-    fi
-
     # Process web instance
     WEB_COUNT=0
     while IFS=$'\t' read -r INSTANCE_ID NAME STATE; do
