@@ -13,11 +13,165 @@ NC='\033[0m'
 # Configuration
 CONFIG_FILE="aws-config.env"
 
+# Function to recreate config from AWS instances
+recreate_config_from_aws() {
+    echo -e "${YELLOW}Attempting to recreate $CONFIG_FILE from AWS...${NC}"
+    echo ""
+
+    # Get AWS region from environment or use default
+    AWS_REGION=${AWS_REGION:-us-east-1}
+
+    # Search for instances with names containing "node" and "web"
+    echo "Searching for instances with tags Name=*node* and Name=*web*..."
+
+    # Find all node instances (e.g., peer-observer-node01, peer-observer-node02)
+    NODE_INSTANCES=$(aws ec2 describe-instances \
+        --region $AWS_REGION \
+        --filters "Name=tag:Name,Values=*node*" "Name=instance-state-name,Values=running,stopped" \
+        --query 'Reservations[*].Instances[*].[InstanceId,Tags[?Key==`Name`].Value|[0],State.Name]' \
+        --output text)
+
+    # Find web instance (e.g., peer-observer-web01, should be only one)
+    WEB_INSTANCES=$(aws ec2 describe-instances \
+        --region $AWS_REGION \
+        --filters "Name=tag:Name,Values=*web*" "Name=instance-state-name,Values=running,stopped" \
+        --query 'Reservations[*].Instances[*].[InstanceId,Tags[?Key==`Name`].Value|[0],State.Name]' \
+        --output text)
+
+    if [ -z "$NODE_INSTANCES" ] && [ -z "$WEB_INSTANCES" ]; then
+        echo -e "${RED}✗ No instances found with names containing 'node' or 'web'${NC}"
+        echo "Please create infrastructure first using create-aws-infra.sh"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}Found instances:${NC}"
+
+    # Process node instances
+    NODE_COUNT=0
+    SELECTED_NODE_NAME=""
+    while IFS=$'\t' read -r INSTANCE_ID NAME STATE; do
+        if [ -n "$INSTANCE_ID" ]; then
+            NODE_COUNT=$((NODE_COUNT + 1))
+            echo "  📦 $NAME (ID: $INSTANCE_ID, State: $STATE)"
+
+            # Get the first node instance details
+            if [ $NODE_COUNT -eq 1 ]; then
+                NODE_INSTANCE_ID=$INSTANCE_ID
+                NODE_STATE=$STATE
+                SELECTED_NODE_NAME=$NAME
+            fi
+        fi
+    done <<< "$NODE_INSTANCES"
+
+    # Inform user if multiple nodes found
+    if [ $NODE_COUNT -gt 1 ]; then
+        echo ""
+        echo -e "${YELLOW}ℹ  Multiple node instances found. Using $SELECTED_NODE_NAME for operations.${NC}"
+    fi
+
+    # Process web instance
+    WEB_COUNT=0
+    while IFS=$'\t' read -r INSTANCE_ID NAME STATE; do
+        if [ -n "$INSTANCE_ID" ]; then
+            WEB_COUNT=$((WEB_COUNT + 1))
+            echo "  🌐 $NAME (ID: $INSTANCE_ID, State: $STATE)"
+            WEB_INSTANCE_ID=$INSTANCE_ID
+            WEB_STATE=$STATE
+        fi
+    done <<< "$WEB_INSTANCES"
+
+    echo ""
+
+    if [ -z "$NODE_INSTANCE_ID" ] || [ -z "$WEB_INSTANCE_ID" ]; then
+        echo -e "${RED}✗ Could not find both node and web instances${NC}"
+        exit 1
+    fi
+
+    # Get detailed information for node instance
+    echo "Fetching detailed information for instances..."
+
+    NODE_DETAILS=$(aws ec2 describe-instances \
+        --region $AWS_REGION \
+        --instance-ids $NODE_INSTANCE_ID \
+        --query 'Reservations[0].Instances[0].[PublicIpAddress,SecurityGroups[0].GroupId,InstanceType,KeyName]' \
+        --output text)
+
+    read NODE_IP NODE_SECURITY_GROUP NODE_INSTANCE_TYPE KEY_NAME <<< "$NODE_DETAILS"
+
+    # Get detailed information for web instance
+    WEB_DETAILS=$(aws ec2 describe-instances \
+        --region $AWS_REGION \
+        --instance-ids $WEB_INSTANCE_ID \
+        --query 'Reservations[0].Instances[0].[PublicIpAddress,SecurityGroups[0].GroupId,InstanceType]' \
+        --output text)
+
+    read WEB_IP WEB_SECURITY_GROUP WEB_INSTANCE_TYPE <<< "$WEB_DETAILS"
+
+    # Get Elastic IP allocations if they exist
+    NODE_EIP_ALLOCATION=$(aws ec2 describe-addresses \
+        --region $AWS_REGION \
+        --filters "Name=instance-id,Values=$NODE_INSTANCE_ID" \
+        --query 'Addresses[0].AllocationId' \
+        --output text 2>/dev/null || echo "")
+
+    WEB_EIP_ALLOCATION=$(aws ec2 describe-addresses \
+        --region $AWS_REGION \
+        --filters "Name=instance-id,Values=$WEB_INSTANCE_ID" \
+        --query 'Addresses[0].AllocationId' \
+        --output text 2>/dev/null || echo "")
+
+    # Handle "None" values
+    [ "$NODE_IP" = "None" ] && NODE_IP=""
+    [ "$WEB_IP" = "None" ] && WEB_IP=""
+    [ "$NODE_EIP_ALLOCATION" = "None" ] && NODE_EIP_ALLOCATION=""
+    [ "$WEB_EIP_ALLOCATION" = "None" ] && WEB_EIP_ALLOCATION=""
+
+    # Create the config file
+    cat > "$CONFIG_FILE" << EOF
+# AWS Infrastructure Configuration - Peer Observer
+# This file is automatically regenerated from AWS instances
+# Last regenerated: $(date)
+
+# AWS Region
+AWS_REGION=$AWS_REGION
+
+# Key Pair
+KEY_NAME=$KEY_NAME
+
+# Node01 - Bitcoin Observation Node
+NODE_INSTANCE_ID=$NODE_INSTANCE_ID
+NODE_IP=$NODE_IP
+NODE_EIP_ALLOCATION=$NODE_EIP_ALLOCATION
+NODE_SECURITY_GROUP=$NODE_SECURITY_GROUP
+NODE_INSTANCE_TYPE=$NODE_INSTANCE_TYPE
+
+# Web01 - Dashboard & Monitoring
+WEB_INSTANCE_ID=$WEB_INSTANCE_ID
+WEB_IP=$WEB_IP
+WEB_EIP_ALLOCATION=$WEB_EIP_ALLOCATION
+WEB_SECURITY_GROUP=$WEB_SECURITY_GROUP
+WEB_INSTANCE_TYPE=$WEB_INSTANCE_TYPE
+
+# Last update timestamp
+LAST_UPDATE="$(date)"
+EOF
+
+    echo -e "${GREEN}✓ Configuration file $CONFIG_FILE recreated successfully${NC}"
+    echo ""
+    echo "Configuration details:"
+    echo "  Region: $AWS_REGION"
+    echo "  Key: $KEY_NAME"
+    echo "  Node Instance: $NODE_INSTANCE_ID"
+    echo "  Web Instance: $WEB_INSTANCE_ID"
+    echo ""
+}
+
 # Load configuration
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo -e "${RED}✗ Error: $CONFIG_FILE not found${NC}"
-    echo "Run create-aws-infra.sh first"
-    exit 1
+    echo -e "${YELLOW}⚠ Warning: $CONFIG_FILE not found${NC}"
+    echo ""
+    recreate_config_from_aws
 fi
 
 # Load variables from configuration file
@@ -25,8 +179,17 @@ source "$CONFIG_FILE"
 
 # Verify required variables were loaded
 if [ -z "$NODE_INSTANCE_ID" ] || [ -z "$WEB_INSTANCE_ID" ]; then
-    echo -e "${RED}✗ Error: Could not read Instance IDs from $CONFIG_FILE${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠ Warning: Could not read Instance IDs from $CONFIG_FILE${NC}"
+    echo ""
+    recreate_config_from_aws
+    # Reload configuration after recreation
+    source "$CONFIG_FILE"
+
+    # Verify again
+    if [ -z "$NODE_INSTANCE_ID" ] || [ -z "$WEB_INSTANCE_ID" ]; then
+        echo -e "${RED}✗ Error: Failed to load Instance IDs even after recreation${NC}"
+        exit 1
+    fi
 fi
 
 NODE_INSTANCE=$NODE_INSTANCE_ID
@@ -64,66 +227,90 @@ show_status() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
-    # Node01 status
-    NODE_STATE=$(aws ec2 describe-instances \
+    # Get all peer-observer instances (both node and web)
+    ALL_INSTANCES=$(aws ec2 describe-instances \
         --region $AWS_REGION \
-        --instance-ids $NODE_INSTANCE \
-        --query 'Reservations[0].Instances[0].State.Name' \
+        --filters "Name=tag:Name,Values=*peer-observer*" "Name=instance-state-name,Values=running,stopped,pending,stopping" \
+        --query 'Reservations[*].Instances[*].[InstanceId,Tags[?Key==`Name`].Value|[0],State.Name,PublicIpAddress]' \
         --output text)
 
-    NODE_IP=$(aws ec2 describe-instances \
-        --region $AWS_REGION \
-        --instance-ids $NODE_INSTANCE \
-        --query 'Reservations[0].Instances[0].PublicIpAddress' \
-        --output text)
-
-    # Web01 status
-    WEB_STATE=$(aws ec2 describe-instances \
-        --region $AWS_REGION \
-        --instance-ids $WEB_INSTANCE \
-        --query 'Reservations[0].Instances[0].State.Name' \
-        --output text)
-
-    WEB_IP=$(aws ec2 describe-instances \
-        --region $AWS_REGION \
-        --instance-ids $WEB_INSTANCE \
-        --query 'Reservations[0].Instances[0].PublicIpAddress' \
-        --output text)
-
-    # Color states
-    if [ "$NODE_STATE" = "running" ]; then
-        NODE_COLOR=$GREEN
-    elif [ "$NODE_STATE" = "stopped" ]; then
-        NODE_COLOR=$RED
-    else
-        NODE_COLOR=$YELLOW
+    if [ -z "$ALL_INSTANCES" ]; then
+        echo -e "  ${YELLOW}No peer-observer instances found${NC}"
+        echo ""
+        return
     fi
 
-    if [ "$WEB_STATE" = "running" ]; then
-        WEB_COLOR=$GREEN
-    elif [ "$WEB_STATE" = "stopped" ]; then
-        WEB_COLOR=$RED
-    else
-        WEB_COLOR=$YELLOW
+    # Separate instances into nodes and webs
+    NODE_INSTANCES=""
+    WEB_INSTANCES=""
+
+    while IFS=$'\t' read -r INSTANCE_ID NAME STATE IP; do
+        if [ -n "$INSTANCE_ID" ]; then
+            if [[ "$NAME" == *"web"* ]] || [[ "$NAME" == *"Web"* ]]; then
+                WEB_INSTANCES="${WEB_INSTANCES}${INSTANCE_ID}\t${NAME}\t${STATE}\t${IP}\n"
+            else
+                NODE_INSTANCES="${NODE_INSTANCES}${INSTANCE_ID}\t${NAME}\t${STATE}\t${IP}\n"
+            fi
+        fi
+    done <<< "$ALL_INSTANCES"
+
+    # Function to display instance
+    display_instance() {
+        local INSTANCE_ID=$1
+        local NAME=$2
+        local STATE=$3
+        local IP=$4
+
+        # Determine icon based on name
+        if [[ "$NAME" == *"web"* ]] || [[ "$NAME" == *"Web"* ]]; then
+            ICON="🌐"
+            TYPE="Dashboard"
+        elif [[ "$NAME" == *"node"* ]] || [[ "$NAME" == *"Node"* ]]; then
+            ICON="📦"
+            TYPE="Bitcoin"
+        else
+            ICON="🖥️"
+            TYPE="Instance"
+        fi
+
+        # Color state
+        if [ "$STATE" = "running" ]; then
+            STATE_COLOR=$GREEN
+        elif [ "$STATE" = "stopped" ]; then
+            STATE_COLOR=$RED
+        else
+            STATE_COLOR=$YELLOW
+        fi
+
+        # Display instance info
+        echo "  $ICON $NAME ($TYPE)"
+        echo -e "     Instance ID: $INSTANCE_ID"
+        echo -e "     State: ${STATE_COLOR}${STATE}${NC}"
+
+        if [ "$IP" != "None" ] && [ -n "$IP" ]; then
+            echo -e "     Public IP: $IP"
+            echo -e "     SSH: ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$IP"
+        fi
+        echo ""
+    }
+
+    # Display node instances first
+    if [ -n "$NODE_INSTANCES" ]; then
+        echo -e "$NODE_INSTANCES" | while IFS=$'\t' read -r INSTANCE_ID NAME STATE IP; do
+            if [ -n "$INSTANCE_ID" ]; then
+                display_instance "$INSTANCE_ID" "$NAME" "$STATE" "$IP"
+            fi
+        done
     fi
 
-    echo "  📦 Node01 (Bitcoin)"
-    echo -e "     Instance ID: $NODE_INSTANCE"
-    echo -e "     State: ${NODE_COLOR}${NODE_STATE}${NC}"
-    if [ "$NODE_IP" != "None" ] && [ -n "$NODE_IP" ]; then
-        echo -e "     Public IP: $NODE_IP"
-        echo -e "     SSH: ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$NODE_IP"
+    # Display web instances last
+    if [ -n "$WEB_INSTANCES" ]; then
+        echo -e "$WEB_INSTANCES" | while IFS=$'\t' read -r INSTANCE_ID NAME STATE IP; do
+            if [ -n "$INSTANCE_ID" ]; then
+                display_instance "$INSTANCE_ID" "$NAME" "$STATE" "$IP"
+            fi
+        done
     fi
-    echo ""
-
-    echo "  🌐 Web01 (Dashboard)"
-    echo -e "     Instance ID: $WEB_INSTANCE"
-    echo -e "     State: ${WEB_COLOR}${WEB_STATE}${NC}"
-    if [ "$WEB_IP" != "None" ] && [ -n "$WEB_IP" ]; then
-        echo -e "     Public IP: $WEB_IP"
-        echo -e "     SSH: ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$WEB_IP"
-    fi
-    echo ""
 }
 
 # Function to start instances
