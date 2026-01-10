@@ -232,10 +232,6 @@ check_aws_session() {
         echo ""
         echo -e "  ${GREEN}aws sso login${NC}"
         echo ""
-        echo "Or if you're using a different authentication method:"
-        echo ""
-        echo -e "  ${GREEN}aws configure sso${NC}"
-        echo ""
         exit 1
     fi
 }
