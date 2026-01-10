@@ -13,6 +13,35 @@ NC='\033[0m'
 # Configuration
 CONFIG_FILE="aws-config.env"
 
+# Function to show help
+show_help() {
+    echo -e "${BLUE}╔════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║  Peer Observer - Instance Management       ║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "Usage: $0 [command]"
+    echo ""
+    echo "Commands:"
+    echo "  start     Start EC2 instances"
+    echo "  stop      Stop EC2 instances"
+    echo "  status    Show current instance status"
+    echo "  destroy   Permanently destroy instances (with confirmation)"
+    echo "  help      Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  $0 start"
+    echo "  $0 stop"
+    echo "  $0 status"
+    echo "  $0 destroy"
+    echo ""
+}
+
+# Check if user is asking for help before loading AWS config
+if [ "${1:-help}" = "help" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    show_help
+    exit 0
+fi
+
 # Function to recreate config from AWS instances
 recreate_config_from_aws() {
     echo -e "${YELLOW}Attempting to recreate $CONFIG_FILE from AWS...${NC}"
@@ -693,29 +722,6 @@ destroy_instances() {
     echo ""
     echo "The configuration file $CONFIG_FILE is still present."
     echo "You can delete it manually if needed."
-    echo ""
-}
-
-# Function to show help
-show_help() {
-    echo -e "${BLUE}╔════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║  Peer Observer - Instance Management       ║${NC}"
-    echo -e "${BLUE}╚════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo "Usage: $0 [command]"
-    echo ""
-    echo "Commands:"
-    echo "  start     Start EC2 instances"
-    echo "  stop      Stop EC2 instances"
-    echo "  status    Show current instance status"
-    echo "  destroy   Permanently destroy instances (with confirmation)"
-    echo "  help      Show this help"
-    echo ""
-    echo "Examples:"
-    echo "  $0 start"
-    echo "  $0 stop"
-    echo "  $0 status"
-    echo "  $0 destroy"
     echo ""
 }
 
