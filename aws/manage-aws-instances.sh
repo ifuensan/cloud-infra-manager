@@ -230,7 +230,7 @@ check_aws_session() {
         echo ""
         echo "Please reauthenticate using:"
         echo ""
-        echo -e "  ${GREEN}aws sso login${NC}"
+        echo -e "  ${GREEN}aws login${NC}"
         echo ""
         exit 1
     fi
