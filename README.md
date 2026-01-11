@@ -177,14 +177,6 @@ See [TODO.md](TODO.md) for details about:
 - Planned improvements
 - Features in development
 
-## License
-
-[To be defined]
-
-## Contact
-
-[Your contact information or peer-observer project contact]
-
 ---
 
 **Note**: Initially developed to manage the infrastructure for [peer-observer](https://github.com/0xB10C/peer-observer).
