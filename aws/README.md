@@ -10,17 +10,37 @@ Creates all necessary infrastructure in AWS.
 
 **Usage:**
 ```bash
+# 1. Copy the example configuration file
+cp env.example .env
+
+# 2. Edit .env with your values
+nano .env  # or your preferred editor
+
+# 3. Run the script
 ./create-aws-infra.sh
 ```
 
-**Configuration (edit the script):**
+**Configuration (.env file):**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AWS_REGION` | AWS region where resources will be created | `us-east-1` |
+| `KEY_NAME` | SSH Key Pair name | `peer-observer-key` |
+| `INSTANCE_TYPE_NODE` | EC2 type for Bitcoin nodes | `t3.large` (2 vCPU, 8 GB) |
+| `INSTANCE_TYPE_WEB` | EC2 type for web server | `t3.medium` (2 vCPU, 4 GB) |
+| `BITCOIN_VOLUME_SIZE` | Disk size in GB for full nodes | `1000` |
+| `BITCOIN_PRUNED_VOLUME_SIZE` | Disk size in GB for pruned nodes | `50` |
+| `WEB_VOLUME_SIZE` | Disk size in GB for web server | `100` |
+
+Example `.env` file:
 ```bash
-AWS_REGION="us-east-1"          # AWS region
-KEY_NAME="peer-observer-key"    # Key pair name
-INSTANCE_TYPE_NODE="t3.large"   # Type for Bitcoin node (2 vCPU, 8 GB RAM)
-INSTANCE_TYPE_WEB="t3.medium"   # Type for webserver (2 vCPU, 4 GB RAM)
-BITCOIN_VOLUME_SIZE=1000        # GB for blockchain
-WEB_VOLUME_SIZE=100             # GB for webserver
+AWS_REGION="us-east-1"
+KEY_NAME="peer-observer-key"
+INSTANCE_TYPE_NODE="t3.large"
+INSTANCE_TYPE_WEB="t3.medium"
+BITCOIN_VOLUME_SIZE=1000
+BITCOIN_PRUNED_VOLUME_SIZE=50
+WEB_VOLUME_SIZE=100
 ```
 
 **Resources it creates:**
@@ -118,13 +138,17 @@ Shows:
 
 ### Initial Setup
 ```bash
-# 1. Create infrastructure
+# 1. Configure environment
+cp env.example .env
+nano .env  # Edit with your values
+
+# 2. Create infrastructure
 ./create-aws-infra.sh
 
-# 2. Verify everything was created correctly
+# 3. Verify everything was created correctly
 ./manage-aws-instances.sh status
 
-# 3. Connect via SSH
+# 4. Connect via SSH
 ssh -i ~/.ssh/peer-observer-key.pem ubuntu@<NODE_IP>
 ssh -i ~/.ssh/peer-observer-key.pem ubuntu@<WEB_IP>
 ```
@@ -223,6 +247,7 @@ chmod 400 ~/.ssh/peer-observer-key.pem
 ## Security
 
 **⚠️ NEVER commit these files:**
+- `.env` - Contains your infrastructure configuration
 - `aws-config.env` - Contains IDs and sensitive configuration
 - `aws-infrastructure.txt` - Contains IPs and public details
 - `*.pem` - SSH private keys

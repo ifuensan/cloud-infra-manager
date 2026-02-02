@@ -10,19 +10,119 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Help function
+show_help() {
+    echo -e "${BLUE}╔════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║  Peer Observer - AWS Infrastructure Setup ║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${YELLOW}DESCRIPTION${NC}"
+    echo "  Creates AWS infrastructure for peer-observer Bitcoin monitoring."
+    echo "  This includes EC2 instances, security groups, and Elastic IPs"
+    echo "  for Bitcoin observation nodes and a web dashboard server."
+    echo ""
+    echo -e "${YELLOW}USAGE${NC}"
+    echo "  $0 [OPTIONS]"
+    echo ""
+    echo -e "${YELLOW}OPTIONS${NC}"
+    echo "  -h, --help    Show this help message and exit"
+    echo ""
+    echo -e "${YELLOW}CONFIGURATION${NC}"
+    echo "  The script reads configuration from .env file in the same directory."
+    echo "  Copy env.example to .env and edit with your values:"
+    echo ""
+    echo "    cp env.example .env"
+    echo ""
+    echo "  Required variables in .env:"
+    echo "    AWS_REGION                - AWS region (e.g., us-east-1)"
+    echo "    KEY_NAME                  - SSH key pair name"
+    echo "    INSTANCE_TYPE_NODE        - EC2 instance type for Bitcoin nodes"
+    echo "    INSTANCE_TYPE_WEB         - EC2 instance type for web server"
+    echo "    BITCOIN_VOLUME_SIZE       - Disk size (GB) for full Bitcoin nodes"
+    echo "    BITCOIN_PRUNED_VOLUME_SIZE - Disk size (GB) for pruned nodes"
+    echo "    WEB_VOLUME_SIZE           - Disk size (GB) for web server"
+    echo ""
+    echo -e "${YELLOW}PREREQUISITES${NC}"
+    echo "  - AWS CLI installed and configured (aws configure)"
+    echo "  - Valid AWS credentials with EC2 permissions"
+    echo ""
+    echo -e "${YELLOW}FEATURES${NC}"
+    echo "  - Interactive setup with prompts for configuration choices"
+    echo "  - Create new infrastructure or expand existing"
+    echo "  - Support for full and pruned Bitcoin nodes"
+    echo "  - Automatic Elastic IP allocation and association"
+    echo "  - Security groups for nodes (SSH, Bitcoin P2P, WireGuard)"
+    echo "  - Security groups for web (SSH, HTTP, HTTPS, WireGuard)"
+    echo ""
+    echo -e "${YELLOW}OUTPUT FILES${NC}"
+    echo "  aws-config.env        - Configuration for manage-aws-instances.sh"
+    echo "  aws-infrastructure.txt - Human-readable infrastructure summary"
+    echo ""
+    echo -e "${YELLOW}EXAMPLES${NC}"
+    echo "  # Show this help"
+    echo "  $0 --help"
+    echo ""
+    echo "  # Run the interactive setup"
+    echo "  $0"
+    echo ""
+    echo -e "${YELLOW}SEE ALSO${NC}"
+    echo "  ./manage-aws-instances.sh - Start/stop/status of instances"
+    echo ""
+    exit 0
+}
+
+# Parse arguments
+case "${1:-}" in
+    -h|--help)
+        show_help
+        ;;
+esac
+
 echo -e "${BLUE}╔════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║  Peer Observer - AWS Infrastructure Setup ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Configuration - ADJUST THESE VALUES
-AWS_REGION="us-east-1"
-KEY_NAME="peer-observer-key"
-INSTANCE_TYPE_NODE="t3.large"      # 2 vCPU, 8 GB RAM
-INSTANCE_TYPE_WEB="t3.medium"      # 2 vCPU, 4 GB RAM
-BITCOIN_VOLUME_SIZE=1000           # GB for blockchain
-WEB_VOLUME_SIZE=100                # GB for webserver
+# Load configuration from .env file
+ENV_FILE="$(dirname "$0")/.env"
+if [ ! -f "$ENV_FILE" ]; then
+    echo -e "${RED}✗ Error: Configuration file .env not found${NC}"
+    echo ""
+    echo "Please create a .env file with your configuration:"
+    echo "  cp env.example .env"
+    echo "  # Edit .env with your values"
+    echo ""
+    echo "Required variables:"
+    echo "  AWS_REGION, KEY_NAME, INSTANCE_TYPE_NODE, INSTANCE_TYPE_WEB,"
+    echo "  BITCOIN_VOLUME_SIZE, WEB_VOLUME_SIZE"
+    exit 1
+fi
 
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+
+# Validate required variables
+REQUIRED_VARS=("AWS_REGION" "KEY_NAME" "INSTANCE_TYPE_NODE" "INSTANCE_TYPE_WEB" "BITCOIN_VOLUME_SIZE" "BITCOIN_PRUNED_VOLUME_SIZE" "WEB_VOLUME_SIZE")
+MISSING_VARS=()
+
+for var in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!var}" ]; then
+        MISSING_VARS+=("$var")
+    fi
+done
+
+if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+    echo -e "${RED}✗ Error: Missing required variables in .env:${NC}"
+    for var in "${MISSING_VARS[@]}"; do
+        echo "  - $var"
+    done
+    echo ""
+    echo "See env.example for reference."
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Configuration loaded from .env${NC}"
+echo ""
 echo -e "${YELLOW}Configuration:${NC}"
 echo "  Region: $AWS_REGION"
 echo "  Key Pair: $KEY_NAME"
@@ -73,12 +173,9 @@ case "$KEY_OPTION" in
             echo "Creating a new one..."
             KEY_OPTION=2
         else
-            echo -e "${GREEN}Found existing key pairs:${NC}"
-            echo "$EXISTING_KEYS" | tr '\t' '\n' | nl
-            echo ""
-            echo "Available key pairs:"
             # Convert to array for selection
             readarray -t KEY_ARRAY <<< "$(echo "$EXISTING_KEYS" | tr '\t' '\n')"
+            echo -e "${GREEN}Found existing key pairs:${NC}"
             for i in "${!KEY_ARRAY[@]}"; do
                 echo "     $((i+1))    ${KEY_ARRAY[$i]}"
             done
@@ -575,11 +672,6 @@ declare -A NEW_NODE_INSTANCES=()
 declare -A NEW_NODE_IPS=()
 declare -A NEW_NODE_ALLOCS=()
 
-# Load BTC_PRUNED_VOLUME_SIZE from aws-config.env if exists
-if [ -f aws-config.env ]; then
-    source aws-config.env
-fi
-
 # Skip creation if using existing instances
 if [ "${SKIP_CREATION:-false}" = true ]; then
     echo -e "${GREEN}Using existing instances, skipping creation...${NC}"
@@ -591,19 +683,10 @@ else
 
         # Determine volume size based on node type (single disk for NixOS)
         if [ "${NODE_TYPES[$NODE_NAME]}" = "full" ]; then
-            DISK_SIZE=1000
+            DISK_SIZE=$BITCOIN_VOLUME_SIZE
         else
             # Pruned node
-            if [ -n "$BTC_PRUNED_VOLUME_SIZE" ]; then
-                echo -e "${YELLOW}Using configured pruned volume size: ${BTC_PRUNED_VOLUME_SIZE}GB${NC}"
-                DISK_SIZE=$BTC_PRUNED_VOLUME_SIZE
-            else
-                echo "No default pruned size configured."
-                read -p "Enter disk size in GB for $NODE_NAME (recommended minimum: 50): " NEW_SIZE
-                DISK_SIZE=${NEW_SIZE:-50}
-                # Save for future nodes
-                BTC_PRUNED_VOLUME_SIZE=$DISK_SIZE
-            fi
+            DISK_SIZE=$BITCOIN_PRUNED_VOLUME_SIZE
         fi
 
         # Create the instance with single disk (NixOS installs everything on one disk)
@@ -734,9 +817,9 @@ for NODE_NAME in "${NODES_TO_CREATE[@]}"; do
 
     # Get disk size
     if [ "$NODE_TYPE" = "full" ]; then
-        VOL_SIZE=1000
+        VOL_SIZE=$BITCOIN_VOLUME_SIZE
     else
-        VOL_SIZE=${BTC_PRUNED_VOLUME_SIZE:-50}
+        VOL_SIZE=$BITCOIN_PRUNED_VOLUME_SIZE
     fi
 
     echo "  📦 $NODE_NAME (Bitcoin - $NODE_TYPE)"
@@ -780,8 +863,9 @@ WEB_SECURITY_GROUP=$WEB_SG
 NODE_INSTANCE_TYPE=$INSTANCE_TYPE_NODE
 WEB_INSTANCE_TYPE=$INSTANCE_TYPE_WEB
 
-# Bitcoin Node Configuration
-BTC_PRUNED_VOLUME_SIZE=${BTC_PRUNED_VOLUME_SIZE:-50}
+# Bitcoin Node Configuration (from .env)
+BITCOIN_VOLUME_SIZE=$BITCOIN_VOLUME_SIZE
+BITCOIN_PRUNED_VOLUME_SIZE=$BITCOIN_PRUNED_VOLUME_SIZE
 
 # All Nodes Configuration (array format)
 EOF
@@ -996,29 +1080,6 @@ fi
 echo ""
 STEP_NUM=$((STEP_NUM + 1))
 
-echo -e "${STEP_NUM}. ${BLUE}Update infra.nix:${NC}"
-echo "   - Confirm WireGuard public keys"
-if [ "$CREATE_WEB" = true ]; then
-    echo "   - Add your domain"
-fi
-echo "   - Update email for Let's Encrypt"
+echo -e "${STEP_NUM}. ${BLUE}Configure peer-observer${NC}"
 echo ""
-STEP_NUM=$((STEP_NUM + 1))
-
-echo -e "${STEP_NUM}. ${BLUE}Deploy NixOS with nixos-anywhere:${NC}"
-for NODE_NAME in "${NODES_TO_CREATE[@]}"; do
-    IP=${NEW_NODE_IPS[$NODE_NAME]}
-    # Extract flake name (e.g., peer-observer-node01 -> node01)
-    FLAKE_NAME=$(echo "$NODE_NAME" | sed 's/peer-observer-//')
-    echo "   nix run github:nix-community/nixos-anywhere -- \\"
-    echo "     --flake .#$FLAKE_NAME \\"
-    echo "     --target-host root@$IP"
-    echo ""
-done
-if [ "$CREATE_WEB" = true ]; then
-    echo "   nix run github:nix-community/nixos-anywhere -- \\"
-    echo "     --flake .#web01 \\"
-    echo "     --target-host root@$WEB_IP"
-    echo ""
-fi
-echo -e "${GREEN}Ready to deploy! 🚀${NC}"
+echo -e "${GREEN}Ready to deploy!${NC}"
